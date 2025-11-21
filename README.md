@@ -1,165 +1,76 @@
-# giuappunti
-public bool Add(int key, string value)
+// 1️⃣ REQUEST DTO (Controller riceve)
+public class SearchCoachRequest
 {
-    var hashed = ComputeHashNumber(key);
-
-    if (Elements[hashed].isFree == true)
-    {
-        Elements[hashed].value = value;
-        Elements[hashed].key = key;
-        Elements[hashed].isFree = false;
-        return true;
-    }
-    else
-    {
-        // Linear probing: cerca la prossima posizione libera
-        var index = hashed;
-        
-        while (true)
-        {
-            // Passa alla prossima posizione
-            index = (index + 1) % _arrayCapacity;
-            
-            // Se torniamo alla posizione iniziale, la tabella è piena
-            if (index == hashed)
-            {
-                return false; // Tabella piena
-            }
-            
-            // Se troviamo una posizione libera
-            if (Elements[index].isFree == true)
-            {
-                Elements[index].value = value;
-                Elements[index].key = key;
-                Elements[index].isFree = false;
-                return true;
-            }
-        }
-    }
+    public string? Name { get; set; }  // nullable
 }
-public string Get(int key)
+
+// 2️⃣ RESPONSE DTO (Controller ritorna)
+public class SearchCoachResponse
 {
-    var hashed = ComputeHashNumber(key);
-    var index = hashed;
-    
-    while (true)
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public string Surname { get; set; }
+    public string Email { get; set; }
+}
+
+// 3️⃣ REPOSITORY (Data Access - Ritorna IQueryable)
+public interface IRepository
+{
+    IQueryable<Coach> SearchCoaches(string? searchTerm);
+}
+
+public class DbRepository : IRepository
+{
+    private readonly GymManagerDbContext _context;
+
+    public IQueryable<Coach> SearchCoaches(string? searchTerm)
     {
-        // Se troviamo una posizione libera, la chiave non esiste
-        if (Elements[index].isFree == true)
+        var query = _context.Coaches.AsNoTracking();
+        
+        if (!string.IsNullOrWhiteSpace(searchTerm))
         {
-            return null; // Oppure throw new KeyNotFoundException()
+            query = query.Where(c => c.Name.Contains(searchTerm) || 
+                                      c.Surname.Contains(searchTerm));
         }
         
-        // Se troviamo la chiave, restituisci il valore
-        if (Elements[index].key == key)
-        {
-            return Elements[index].value;
-        }
-        
-        // Passa alla prossima posizione (linear probing)
-        index = (index + 1) % _arrayCapacity;
-        
-        // Se torniamo alla posizione iniziale, la chiave non esiste
-        if (index == hashed)
-        {
-            return null;
-        }
+        return query;  // ✅ Ritorna IQueryable (non eseguito!)
     }
 }
 
-// CONTAINS: verifica se la chiave esiste
-public bool Contains(int key)
+// 4️⃣ SERVICE (Business Logic)
+public interface ICoachService
 {
-    var hashed = ComputeHashNumber(key);
-    var index = hashed;
-    
-    while (true)
+    Task<IEnumerable<SearchCoachResponse>> SearchCoaches(string? searchTerm);
+}
+
+public class CoachService : ICoachService
+{
+    private readonly IRepository _repo;
+
+    public async Task<IEnumerable<SearchCoachResponse>> SearchCoaches(string? searchTerm)
     {
-        // Se troviamo una posizione libera, la chiave non esiste
-        if (Elements[index].isFree == true)
-        {
-            return false;
-        }
+        // Chiama il repository (query non eseguita ancora)
+        var query = _repo.SearchCoaches(searchTerm);
         
-        // Se troviamo la chiave, esiste
-        if (Elements[index].key == key)
-        {
-            return true;
-        }
+        // Esegui la query E fai il mapping
+        var coaches = await query.ToListAsync();
         
-        // Passa alla prossima posizione
-        index = (index + 1) % _arrayCapacity;
-        
-        // Se torniamo alla posizione iniziale, la chiave non esiste
-        if (index == hashed)
+        return coaches.Select(c => new SearchCoachResponse
         {
-            return false;
-        }
+            Id = c.Id,
+            Name = c.Name,
+            Surname = c.Surname,
+            Email = c.Email
+        }).ToList();
     }
 }
 
-// UPDATE: aggiorna il valore di una chiave esistente
-public bool Update(int key, string newValue)
+// 5️⃣ CONTROLLER (API Endpoint)
+[HttpGet]
+[Route("search")]
+public async Task<ActionResult<IEnumerable<SearchCoachResponse>>> SearchCoaches(
+    [FromQuery] string? name)  // ✅ Da URL: /api/coach/search?name=Marco
 {
-    var hashed = ComputeHashNumber(key);
-    var index = hashed;
-    
-    while (true)
-    {
-        // Se troviamo una posizione libera, la chiave non esiste
-        if (Elements[index].isFree == true)
-        {
-            return false; // Chiave non trovata
-        }
-        
-        // Se troviamo la chiave, aggiorna il valore
-        if (Elements[index].key == key)
-        {
-            Elements[index].value = newValue;
-            return true; // Aggiornamento riuscito
-        }
-        
-        // Passa alla prossima posizione
-        index = (index + 1) % _arrayCapacity;
-        
-        // Se torniamo alla posizione iniziale, la chiave non esiste
-        if (index == hashed)
-        {
-            return false;
-        }
-    }
-}
-
-// DELETE: elimina una chiave (lazy deletion)
-public bool Delete(int key)
-{
-    var hashed = ComputeHashNumber(key);
-    var index = hashed;
-    
-    while (true)
-    {
-        // Se troviamo una posizione libera, la chiave non esiste
-        if (Elements[index].isFree == true)
-        {
-            return false; // Chiave non trovata
-        }
-        
-        // Se troviamo la chiave, eliminala
-        if (Elements[index].key == key)
-        {
-            Elements[index].isFree = true;
-            Elements[index].value = null;
-            Elements[index].key = 0; // Opzionale: reset della chiave
-            return true; // Eliminazione riuscita
-        }
-        
-        // Passa alla prossima posizione
-        index = (index + 1) % _arrayCapacity;
-        
-        // Se torniamo alla posizione iniziale, la chiave non esiste
-        if (index == hashed)
-        {
-            return false;
-        }
-    }
+    var result = await _service.SearchCoaches(name);
+    return Ok(result);
 }
